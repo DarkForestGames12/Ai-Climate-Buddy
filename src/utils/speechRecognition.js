@@ -10,10 +10,11 @@ export class WhisperSpeechRecognition {
     this.audioChunks = []
     this.isRecording = false
     this.silenceTimer = null
-    this.silenceDelay = 1500 // 1.5 seconds of silence before sending
+    this.silenceDelay = 2000 // 2 seconds of silence before sending
     this.audioContext = null
     this.analyser = null
-    this.silenceThreshold = 0.01 // Adjust based on testing
+    this.silenceThreshold = 0.02 // Increased threshold for better detection
+    this.hasSound = false // Track if we've detected any sound
     
     // Callbacks
     this.onResult = null
@@ -60,6 +61,7 @@ export class WhisperSpeechRecognition {
 
       this.mediaRecorder.start()
       this.isRecording = true
+      this.hasSound = false // Reset sound detection flag
       
       if (this.onStart) {
         this.onStart()
@@ -124,21 +126,25 @@ export class WhisperSpeechRecognition {
       }
       const rms = Math.sqrt(sum / bufferLength)
 
-      // If volume is below threshold (silence)
-      if (rms < this.silenceThreshold) {
-        if (!this.silenceTimer && this.audioChunks.length > 0) {
-          // Start silence timer
-          this.silenceTimer = setTimeout(() => {
-            console.log('🔇 Silence detected, processing audio...')
-            this.stop()
-          }, this.silenceDelay)
-        }
-      } else {
-        // Sound detected, clear silence timer
+      console.log('🔊 Audio level:', rms.toFixed(4), '| Threshold:', this.silenceThreshold)
+
+      // If volume is ABOVE threshold (sound detected)
+      if (rms > this.silenceThreshold) {
+        this.hasSound = true
+        console.log('🎤 Sound detected!')
+        
+        // Clear any existing silence timer
         if (this.silenceTimer) {
           clearTimeout(this.silenceTimer)
           this.silenceTimer = null
         }
+      } else if (this.hasSound && !this.silenceTimer) {
+        // We had sound before, now it's silent - start timer
+        console.log('🤫 Silence starting, waiting', this.silenceDelay, 'ms...')
+        this.silenceTimer = setTimeout(() => {
+          console.log('🔇 Silence confirmed, processing audio...')
+          this.stop()
+        }, this.silenceDelay)
       }
 
       // Continue monitoring
