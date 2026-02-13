@@ -3,15 +3,14 @@ services:
   - type: web
     name: climate-buddy-api
     env: python
+    runtime: python
     region: oregon
     plan: free
-    buildCommand: "cd backend && pip install -r requirements.txt"
+    buildCommand: "cd backend && pip install --upgrade pip setuptools wheel && pip install -r requirements.txt"
     startCommand: "cd backend && gunicorn app:app"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: PORT
-        value: 5000
     healthCheckPath: /health
     
   # Frontend (Static Site)
