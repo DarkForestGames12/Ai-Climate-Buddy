@@ -1,0 +1,37 @@
+services:
+  # Backend API (Python + Whisper)
+  - type: web
+    name: climate-buddy-api
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 5000
+    healthCheckPath: /health
+    
+  # Frontend (Static Site)
+  - type: web
+    name: climate-buddy-frontend
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_API_KEY
+        sync: false
+      - key: VITE_API_MODEL
+        sync: false
+      - key: VITE_SPEECH_API_URL
+        sync: false

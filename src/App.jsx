@@ -7,6 +7,7 @@ import MicrophoneButton from './components/MicrophoneButton'
 import ChatBubble from './components/ChatBubble'
 import BackgroundParticles from './components/BackgroundParticles'
 import { API_CONFIG } from './config'
+import { WhisperSpeechRecognition } from './utils/speechRecognition'
 import './App.css'
 
 const SYSTEM_PROMPT = `You are Climate Buddy, an AI guide for SDG 13 Climate Action.
