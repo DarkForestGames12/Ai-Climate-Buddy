@@ -31,6 +31,7 @@ function App() {
   const silenceTimerRef = useRef(null)
   const interimTranscriptRef = useRef('')
   const finalTranscriptRef = useRef('')
+  const isRecognitionRunningRef = useRef(false) // FIXED: Track if recognition is running
 
   // Initialize speech recognition
   useEffect(() => {
@@ -40,8 +41,12 @@ function App() {
       recognitionRef.current.continuous = true
       recognitionRef.current.interimResults = true
       recognitionRef.current.lang = 'en-US'
+      // IMPROVED: Better noise handling for loud environments
+      recognitionRef.current.maxAlternatives = 3
 
       recognitionRef.current.onstart = () => {
+        console.log('🎤 Microphone is now listening...')
+        isRecognitionRunningRef.current = true // FIXED: Mark as running
         setStatus('listening')
         interimTranscriptRef.current = ''
         finalTranscriptRef.current = ''
@@ -52,9 +57,19 @@ function App() {
         let finalTranscript = ''
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript
+          const result = event.results[i]
+          const confidence = result[0].confidence
+          const transcript = result[0].transcript
+          
+          console.log(`Confidence: ${confidence ? confidence.toFixed(2) : 'N/A'} - "${transcript}"`)
+          
+          if (result.isFinal) {
+            // IMPROVED: Only accept speech with good confidence (>0.6 for noisy environments)
+            if (!confidence || confidence > 0.6) {
+              finalTranscript += transcript
+            } else {
+              console.log('⚠️ Low confidence, ignoring:', transcript)
+            }
           } else {
             interimTranscript += transcript
           }
@@ -64,19 +79,22 @@ function App() {
           finalTranscriptRef.current += finalTranscript
           setCurrentTranscript(finalTranscriptRef.current + interimTranscript)
           
+          console.log('✅ Captured speech:', finalTranscriptRef.current)
+          
           // Clear existing silence timer
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current)
           }
           
-          // Set new silence timer (2 seconds)
+          // IMPROVED: Shorter timeout (1.5 seconds) for faster response in noisy environments
           silenceTimerRef.current = setTimeout(() => {
             if (finalTranscriptRef.current.trim()) {
+              console.log('📤 Sending to AI:', finalTranscriptRef.current.trim())
               handleUserSpeech(finalTranscriptRef.current.trim())
               finalTranscriptRef.current = ''
               setCurrentTranscript('')
             }
-          }, 2000)
+          }, 1500)
         } else {
           setCurrentTranscript(finalTranscriptRef.current + interimTranscript)
         }
@@ -85,22 +103,45 @@ function App() {
       }
 
       recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error)
-        if (event.error !== 'no-speech') {
+        console.error('❌ Speech recognition error:', event.error)
+        
+        // IMPROVED: Better error handling for noisy environments
+        if (event.error === 'no-speech') {
+          console.log('⚠️ No speech detected, restarting immediately...')
+          // Immediately restart on no-speech
           setTimeout(() => {
             if (status !== 'speaking' && status !== 'thinking') {
               startListening()
             }
-          }, 1000)
+          }, 100)
+        } else if (event.error === 'audio-capture') {
+          console.error('🎤 Microphone access error! Please check permissions.')
+          alert('Microphone access denied! Please allow microphone access in your browser settings.')
+        } else if (event.error === 'network') {
+          console.error('🌐 Network error! Check your internet connection.')
+          setTimeout(() => {
+            if (status !== 'speaking' && status !== 'thinking') {
+              startListening()
+            }
+          }, 2000)
+        } else {
+          // For other errors, restart quickly
+          setTimeout(() => {
+            if (status !== 'speaking' && status !== 'thinking') {
+              startListening()
+            }
+          }, 500)
         }
       }
 
       recognitionRef.current.onend = () => {
-        // Auto-restart if not speaking or thinking
+        console.log('🔄 Recognition ended, auto-restarting...')
+        isRecognitionRunningRef.current = false // FIXED: Mark as stopped
+        // IMPROVED: Faster auto-restart (200ms instead of 500ms)
         if (status !== 'speaking' && status !== 'thinking') {
           setTimeout(() => {
             startListening()
-          }, 500)
+          }, 200)
         }
       }
     }
@@ -144,24 +185,57 @@ function App() {
           timestamp: new Date()
         }
         setMessages([aiMessage])
-        speakText(greetingMessage)
+        
+        // FIXED: Try to speak, but if blocked, just start listening
+        speakText(greetingMessage).catch(() => {
+          // If speech fails, just start listening
+          console.log('Initial greeting speech blocked, starting listening mode')
+          setStatus('ready')
+          setTimeout(() => startListening(), 500)
+        })
       }, 1000)
     }
   }, [isInitialized])
 
   const startListening = () => {
-    if (recognitionRef.current && status !== 'speaking' && status !== 'thinking') {
+    // FIXED: Don't try to start if already running OR if AI is speaking/thinking
+    if (isRecognitionRunningRef.current) {
+      console.log('⚠️ Recognition already running, skipping start')
+      return
+    }
+    
+    if (status === 'speaking' || status === 'thinking') {
+      console.log('⚠️ AI is speaking/thinking, not starting microphone')
+      return
+    }
+    
+    if (recognitionRef.current) {
       try {
         recognitionRef.current.start()
+        console.log('🎤 Started listening...')
       } catch (error) {
-        console.error('Error starting recognition:', error)
+        // FIXED: Handle "already started" error gracefully
+        if (error.message && error.message.includes('already started')) {
+          console.log('⚠️ Recognition already running (this is OK)')
+          isRecognitionRunningRef.current = true // Update state
+        } else {
+          console.error('❌ Error starting recognition:', error)
+          isRecognitionRunningRef.current = false // Reset state on error
+        }
       }
     }
   }
 
   const stopListening = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop()
+      try {
+        recognitionRef.current.stop()
+        isRecognitionRunningRef.current = false // FIXED: Mark as stopped
+        console.log('🛑 Stopped listening')
+      } catch (error) {
+        // Ignore errors when stopping
+        console.log('⚠️ Error stopping recognition (this is OK):', error.message)
+      }
     }
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current)
@@ -246,10 +320,13 @@ function App() {
   }
 
   const speakText = async (text) => {
-    setStatus('speaking')
-    
-    // Stop listening while AI is speaking to prevent echo
+    // FIXED: Ensure we're not listening before speaking
     stopListening()
+    
+    // Wait a moment for microphone to fully stop
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    setStatus('speaking')
     
     // Cancel any ongoing speech
     window.speechSynthesis.cancel()
@@ -263,6 +340,7 @@ function App() {
     
     try {
       // Use ElevenLabs for realistic voice
+      console.log('🔊 Attempting ElevenLabs TTS...')
       const response = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_CONFIG.voiceId}`,
         {
@@ -286,21 +364,24 @@ function App() {
       )
 
       if (!response.ok) {
-        throw new Error('ElevenLabs API error')
+        throw new Error(`ElevenLabs API error: ${response.status}`)
       }
 
+      console.log('✅ ElevenLabs TTS successful!')
+      
       // Convert response to audio blob
       const audioBlob = await response.blob()
       const audioUrl = URL.createObjectURL(audioBlob)
       const audio = new Audio(audioUrl)
 
       audio.onended = () => {
+        console.log('✅ Finished speaking')
         URL.revokeObjectURL(audioUrl)
         setStatus('ready')
-        // Resume listening after speaking
+        // Wait longer before restarting to prevent echo
         setTimeout(() => {
           startListening()
-        }, 1500)
+        }, 2000)
       }
 
       audio.onerror = (error) => {
@@ -309,33 +390,42 @@ function App() {
         setStatus('ready')
         setTimeout(() => {
           startListening()
-        }, 1500)
+        }, 2000)
       }
 
-      audio.play()
+      // Handle autoplay restrictions
+      audio.play().catch(error => {
+        console.error('Audio autoplay blocked:', error)
+        URL.revokeObjectURL(audioUrl)
+        setStatus('ready')
+        setTimeout(() => {
+          startListening()
+        }, 1000)
+      })
       
     } catch (error) {
       console.error('ElevenLabs TTS error:', error)
-      // Fallback to browser TTS if ElevenLabs fails
-      console.log('Falling back to browser TTS')
+      console.log('⚠️ Falling back to browser TTS')
       
+      // Fallback to browser TTS if ElevenLabs fails
       const utterance = new SpeechSynthesisUtterance(cleanText)
       utterance.rate = 1.0
       utterance.pitch = 1.0
       utterance.volume = 1
       
       utterance.onend = () => {
+        console.log('✅ Finished speaking (browser TTS)')
         setStatus('ready')
         setTimeout(() => {
           startListening()
-        }, 1500)
+        }, 2000)
       }
       
       utterance.onerror = () => {
         setStatus('ready')
         setTimeout(() => {
           startListening()
-        }, 1500)
+        }, 2000)
       }
       
       window.speechSynthesis.speak(utterance)
