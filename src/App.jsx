@@ -6,7 +6,7 @@ import Sidebar from './components/Sidebar'
 import MicrophoneButton from './components/MicrophoneButton'
 import ChatBubble from './components/ChatBubble'
 import BackgroundParticles from './components/BackgroundParticles'
-import { API_CONFIG, ELEVENLABS_CONFIG } from './config'
+import { API_CONFIG } from './config'
 import './App.css'
 
 const SYSTEM_PROMPT = `You are Climate Buddy, an AI guide for SDG 13 Climate Action.
@@ -118,12 +118,16 @@ function App() {
           console.error('🎤 Microphone access error! Please check permissions.')
           alert('Microphone access denied! Please allow microphone access in your browser settings.')
         } else if (event.error === 'network') {
-          console.error('🌐 Network error! Check your internet connection.')
+          console.error('🌐 Network error - Chrome speech service issue, retrying...')
+          // Network errors are often temporary Chrome issues, retry quickly
           setTimeout(() => {
             if (status !== 'speaking' && status !== 'thinking') {
               startListening()
             }
-          }, 2000)
+          }, 1000)
+        } else if (event.error === 'not-allowed') {
+          console.error('🎤 Microphone permission denied! Please allow microphone access.')
+          alert('Please allow microphone access to use Climate Buddy!')
         } else {
           // For other errors, restart quickly
           setTimeout(() => {
@@ -339,97 +343,83 @@ function App() {
       .trim()
     
     try {
-      // Use ElevenLabs for realistic voice
-      console.log('🔊 Attempting ElevenLabs TTS...')
-      const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_CONFIG.voiceId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Accept': 'audio/mpeg',
-            'Content-Type': 'application/json',
-            'xi-api-key': ELEVENLABS_CONFIG.apiKey
-          },
-          body: JSON.stringify({
-            text: cleanText,
-            model_id: ELEVENLABS_CONFIG.modelId,
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
-              style: 0.0,
-              use_speaker_boost: true
-            }
-          })
-        }
-      )
-
-      if (!response.ok) {
-        throw new Error(`ElevenLabs API error: ${response.status}`)
-      }
-
-      console.log('✅ ElevenLabs TTS successful!')
+      // Try StreamElements TTS API (100% Free, No API Key Required!)
+      console.log('🔊 Attempting StreamElements TTS (Free Neural Voice)...')
       
-      // Convert response to audio blob
-      const audioBlob = await response.blob()
-      const audioUrl = URL.createObjectURL(audioBlob)
-      const audio = new Audio(audioUrl)
-
+      // StreamElements voices: Brian (male), Ivy (female child), Joanna (female), Matthew (male)
+      const voice = 'Joanna' // Friendly female voice, great for kids
+      const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=${voice}&text=${encodeURIComponent(cleanText)}`
+      
+      const audio = new Audio(ttsUrl)
+      
       audio.onended = () => {
-        console.log('✅ Finished speaking')
-        URL.revokeObjectURL(audioUrl)
+        console.log('✅ Finished speaking (StreamElements TTS)')
         setStatus('ready')
-        // Wait longer before restarting to prevent echo
         setTimeout(() => {
           startListening()
         }, 2000)
       }
-
+      
       audio.onerror = (error) => {
-        console.error('Audio playback error:', error)
-        URL.revokeObjectURL(audioUrl)
-        setStatus('ready')
-        setTimeout(() => {
-          startListening()
-        }, 2000)
+        console.error('StreamElements TTS error, falling back to browser TTS:', error)
+        // Fallback to browser TTS
+        useBrowserTTS(cleanText)
       }
-
-      // Handle autoplay restrictions
-      audio.play().catch(error => {
-        console.error('Audio autoplay blocked:', error)
-        URL.revokeObjectURL(audioUrl)
-        setStatus('ready')
-        setTimeout(() => {
-          startListening()
-        }, 1000)
-      })
+      
+      await audio.play()
+      console.log('✅ StreamElements TTS playing!')
       
     } catch (error) {
-      console.error('ElevenLabs TTS error:', error)
+      console.error('TTS error:', error)
       console.log('⚠️ Falling back to browser TTS')
-      
-      // Fallback to browser TTS if ElevenLabs fails
-      const utterance = new SpeechSynthesisUtterance(cleanText)
-      utterance.rate = 1.0
-      utterance.pitch = 1.0
-      utterance.volume = 1
-      
-      utterance.onend = () => {
-        console.log('✅ Finished speaking (browser TTS)')
-        setStatus('ready')
-        setTimeout(() => {
-          startListening()
-        }, 2000)
-      }
-      
-      utterance.onerror = () => {
-        setStatus('ready')
-        setTimeout(() => {
-          startListening()
-        }, 2000)
-      }
-      
-      window.speechSynthesis.speak(utterance)
+      useBrowserTTS(cleanText)
     }
+  }
+  
+  const useBrowserTTS = (cleanText) => {
+    // Fallback to browser's built-in TTS
+    const utterance = new SpeechSynthesisUtterance(cleanText)
+    
+    // Get available voices
+    const voices = window.speechSynthesis.getVoices()
+    
+    // Try to find the best voice (prefer Google voices, then Microsoft, then any English voice)
+    const preferredVoice = voices.find(voice => 
+      voice.lang.startsWith('en') && 
+      (voice.name.includes('Google') || voice.name.includes('Chrome'))
+    ) || voices.find(voice => 
+      voice.lang.startsWith('en') && 
+      voice.name.includes('Microsoft')
+    ) || voices.find(voice => 
+      voice.lang.startsWith('en')
+    )
+    
+    if (preferredVoice) {
+      utterance.voice = preferredVoice
+      console.log('🎙️ Using voice:', preferredVoice.name)
+    }
+    
+    // Optimize settings for natural speech
+    utterance.rate = 0.95  // Slightly slower for clarity
+    utterance.pitch = 1.1  // Slightly higher pitch for friendliness
+    utterance.volume = 1
+    
+    utterance.onend = () => {
+      console.log('✅ Finished speaking (Browser TTS)')
+      setStatus('ready')
+      setTimeout(() => {
+        startListening()
+      }, 2000)
+    }
+    
+    utterance.onerror = () => {
+      setStatus('ready')
+      setTimeout(() => {
+        startListening()
+      }, 2000)
+    }
+    
+    window.speechSynthesis.speak(utterance)
   }
 
   const handleNewConversation = () => {
