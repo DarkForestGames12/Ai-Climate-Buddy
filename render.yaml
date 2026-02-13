@@ -7,7 +7,7 @@ services:
     region: oregon
     plan: free
     buildCommand: "cd backend && pip install --upgrade pip setuptools wheel && pip install -r requirements.txt"
-    startCommand: "cd backend && gunicorn app:app"
+    startCommand: "cd backend && gunicorn --bind 0.0.0.0:$PORT app:app --timeout 120"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0

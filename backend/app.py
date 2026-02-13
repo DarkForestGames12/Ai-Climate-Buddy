@@ -8,10 +8,10 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend requests
 
-# Load Whisper model (using 'base' for balance of speed and accuracy)
-# Options: tiny, base, small, medium, large
+# Load Whisper model (using 'tiny' for low memory usage on free tier)
+# Options: tiny (~75MB RAM), base (~150MB RAM), small (~500MB RAM), medium (~1.5GB RAM), large (~3GB RAM)
 print("Loading Whisper model...")
-model = whisper.load_model("base")
+model = whisper.load_model("tiny")  # Changed to 'tiny' for Render free tier (512MB RAM limit)
 print("Whisper model loaded successfully!")
 
 @app.route('/health', methods=['GET'])
