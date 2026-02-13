@@ -1,9 +1,11 @@
-// Speech Recognition using MediaRecorder + Backend Whisper API
-// This replaces Chrome's Web Speech API with a backend-based solution
+// Speech Recognition using MediaRecorder + Hugging Face Whisper API
+// This replaces Chrome's Web Speech API with Hugging Face's free API
 
 export class WhisperSpeechRecognition {
   constructor(apiUrl) {
-    this.apiUrl = apiUrl || import.meta.env.VITE_SPEECH_API_URL || 'http://localhost:5000'
+    // Use Hugging Face Inference API (free!)
+    this.apiUrl = 'https://api-inference.huggingface.co/models/openai/whisper-tiny.en'
+    this.apiKey = import.meta.env.VITE_HF_API_KEY || '' // Optional: improves rate limits
     this.mediaRecorder = null
     this.audioChunks = []
     this.isRecording = false
@@ -151,24 +153,32 @@ export class WhisperSpeechRecognition {
       // Create blob from audio chunks
       const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' })
       
-      // Create form data
-      const formData = new FormData()
-      formData.append('audio', audioBlob, 'recording.webm')
+      console.log('📤 Sending audio to Hugging Face Whisper API...')
 
-      console.log('📤 Sending audio to Whisper API...')
+      // Prepare headers
+      const headers = {
+        'Content-Type': 'audio/webm'
+      }
+      
+      // Add API key if available (improves rate limits)
+      if (this.apiKey) {
+        headers['Authorization'] = `Bearer ${this.apiKey}`
+      }
 
-      // Send to backend
-      const response = await fetch(`${this.apiUrl}/transcribe`, {
+      // Send to Hugging Face Inference API
+      const response = await fetch(this.apiUrl, {
         method: 'POST',
-        body: formData
+        headers: headers,
+        body: audioBlob
       })
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`API error: ${response.status} - ${errorText}`)
       }
 
       const data = await response.json()
-      const transcribedText = data.text
+      const transcribedText = data.text || ''
 
       console.log('✅ Transcription received:', transcribedText)
 
@@ -177,7 +187,7 @@ export class WhisperSpeechRecognition {
       }
 
     } catch (error) {
-      console.error('Error sending audio to backend:', error)
+      console.error('Error sending audio to Hugging Face:', error)
       if (this.onError) {
         this.onError(error)
       }
