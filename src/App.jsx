@@ -32,6 +32,8 @@ function App() {
   const interimTranscriptRef = useRef('')
   const finalTranscriptRef = useRef('')
   const isRecognitionRunningRef = useRef(false) // FIXED: Track if recognition is running
+  const networkErrorCountRef = useRef(0) // Track consecutive network errors
+  const maxNetworkErrors = 3 // Stop after 3 consecutive network errors
 
   // Initialize speech recognition
   useEffect(() => {
@@ -53,6 +55,9 @@ function App() {
       }
 
       recognitionRef.current.onresult = (event) => {
+        // Reset network error count on successful recognition
+        networkErrorCountRef.current = 0
+        
         let interimTranscript = ''
         let finalTranscript = ''
 
@@ -114,9 +119,15 @@ function App() {
           console.error('🎤 Microphone access error! Please check permissions.')
           alert('Microphone access denied! Please allow microphone access in your browser settings.')
         } else if (event.error === 'network') {
-          console.error('🌐 Network error - This is a Chrome limitation. Speech recognition will continue when network stabilizes.')
-          // Don't retry on network errors - they're persistent Chrome issues
-          // Just let it fail gracefully and wait for onend
+          networkErrorCountRef.current++
+          console.error(`🌐 Network error (${networkErrorCountRef.current}/${maxNetworkErrors}) - Chrome speech service connectivity issue.`)
+          
+          if (networkErrorCountRef.current >= maxNetworkErrors) {
+            console.error('❌ Too many network errors. Stopping automatic retries.')
+            console.log('💡 TIP: Try refreshing the page or check your internet connection.')
+            // Don't restart - too many errors
+            return
+          }
         } else if (event.error === 'not-allowed') {
           console.error('🎤 Microphone permission denied! Please allow microphone access.')
           alert('Please allow microphone access to use Climate Buddy!')
@@ -130,13 +141,20 @@ function App() {
         console.log('🔄 Recognition ended')
         isRecognitionRunningRef.current = false // Mark as stopped
         
+        // Check if we've hit max network errors
+        if (networkErrorCountRef.current >= maxNetworkErrors) {
+          console.log('⚠️ Not restarting due to too many network errors')
+          setStatus('ready')
+          return
+        }
+        
         // Only auto-restart if not speaking/thinking and not in error state
         if (status !== 'speaking' && status !== 'thinking') {
           setTimeout(() => {
             if (!isRecognitionRunningRef.current) {
               startListening()
             }
-          }, 500)
+          }, 1000) // Increased delay to 1 second
         }
       }
     }
@@ -413,6 +431,18 @@ function App() {
     window.speechSynthesis.speak(utterance)
   }
 
+  const handleManualRestart = () => {
+    // Reset network error counter
+    networkErrorCountRef.current = 0
+    console.log('🔄 Manual restart - resetting error counter')
+    
+    // Stop and restart listening
+    stopListening()
+    setTimeout(() => {
+      startListening()
+    }, 500)
+  }
+
   const handleNewConversation = () => {
     const newConv = {
       id: Date.now(),
@@ -430,6 +460,9 @@ function App() {
     window.speechSynthesis.cancel()
     stopListening()
     setStatus('ready')
+    
+    // Reset network error counter on new conversation
+    networkErrorCountRef.current = 0
     
     // Restart with greeting
     setTimeout(() => {
