@@ -104,48 +104,39 @@ function App() {
 
       recognitionRef.current.onerror = (event) => {
         console.error('❌ Speech recognition error:', event.error)
+        isRecognitionRunningRef.current = false // Mark as stopped on error
         
-        // IMPROVED: Better error handling for noisy environments
+        // IMPROVED: Better error handling
         if (event.error === 'no-speech') {
-          console.log('⚠️ No speech detected, restarting immediately...')
-          // Immediately restart on no-speech
-          setTimeout(() => {
-            if (status !== 'speaking' && status !== 'thinking') {
-              startListening()
-            }
-          }, 100)
+          console.log('⚠️ No speech detected, will restart on next cycle...')
+          // Don't restart immediately, let onend handle it
         } else if (event.error === 'audio-capture') {
           console.error('🎤 Microphone access error! Please check permissions.')
           alert('Microphone access denied! Please allow microphone access in your browser settings.')
         } else if (event.error === 'network') {
-          console.error('🌐 Network error - Chrome speech service issue, retrying...')
-          // Network errors are often temporary Chrome issues, retry quickly
-          setTimeout(() => {
-            if (status !== 'speaking' && status !== 'thinking') {
-              startListening()
-            }
-          }, 1000)
+          console.error('🌐 Network error - This is a Chrome limitation. Speech recognition will continue when network stabilizes.')
+          // Don't retry on network errors - they're persistent Chrome issues
+          // Just let it fail gracefully and wait for onend
         } else if (event.error === 'not-allowed') {
           console.error('🎤 Microphone permission denied! Please allow microphone access.')
           alert('Please allow microphone access to use Climate Buddy!')
-        } else {
-          // For other errors, restart quickly
-          setTimeout(() => {
-            if (status !== 'speaking' && status !== 'thinking') {
-              startListening()
-            }
-          }, 500)
+        } else if (event.error === 'aborted') {
+          console.log('⚠️ Recognition aborted (this is normal when stopping)')
+          // Don't restart on abort
         }
       }
 
       recognitionRef.current.onend = () => {
-        console.log('🔄 Recognition ended, auto-restarting...')
-        isRecognitionRunningRef.current = false // FIXED: Mark as stopped
-        // IMPROVED: Faster auto-restart (200ms instead of 500ms)
+        console.log('🔄 Recognition ended')
+        isRecognitionRunningRef.current = false // Mark as stopped
+        
+        // Only auto-restart if not speaking/thinking and not in error state
         if (status !== 'speaking' && status !== 'thinking') {
           setTimeout(() => {
-            startListening()
-          }, 200)
+            if (!isRecognitionRunningRef.current) {
+              startListening()
+            }
+          }, 500)
         }
       }
     }
@@ -357,7 +348,7 @@ function App() {
         setStatus('ready')
         setTimeout(() => {
           startListening()
-        }, 2000)
+        }, 1000) // Shorter delay before restarting listening
       }
       
       audio.onerror = (error) => {
