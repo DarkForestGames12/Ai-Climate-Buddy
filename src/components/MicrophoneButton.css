@@ -1,0 +1,74 @@
+.mic-button {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(52, 211, 153, 0.15);
+  border: 2px solid rgba(52, 211, 153, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.mic-button.listening {
+  background: rgba(52, 211, 153, 0.25);
+  border-color: rgba(52, 211, 153, 0.6);
+}
+
+.mic-button.speaking {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: rgba(16, 185, 129, 0.6);
+}
+
+.mic-button.thinking {
+  background: rgba(52, 211, 153, 0.2);
+  border-color: rgba(52, 211, 153, 0.5);
+}
+
+.mic-icon-wrapper {
+  color: #34d399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.mic-button.speaking .mic-icon-wrapper {
+  color: #10b981;
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid rgba(52, 211, 153, 0.6);
+  pointer-events: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .mic-button {
+    width: 70px;
+    height: 70px;
+  }
+
+  .mic-icon-wrapper svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mic-button {
+    width: 64px;
+    height: 64px;
+  }
+
+  .mic-icon-wrapper svg {
+    width: 22px;
+    height: 22px;
+  }
+}
